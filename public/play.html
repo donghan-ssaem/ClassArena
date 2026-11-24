@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#141629">
+<title>교실 아레나 · 참가</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  html,body{height:100%;overscroll-behavior:none}
+  body{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh;user-select:none;-webkit-user-select:none}
+  #top{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;padding-top:max(10px,env(safe-area-inset-top));background:#0e1024;border-bottom:2px solid var(--line)}
+  #top .me{font-weight:900;font-size:1.05rem;max-width:45vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #top .sc{display:flex;gap:8px;align-items:center;font-weight:900}
+  main{flex:1;display:flex;flex-direction:column;padding:14px;gap:12px;width:100%;max-width:720px;margin:0 auto}
+  .view{flex:1;display:flex;flex-direction:column;gap:12px}
+  .view.center{justify-content:center}
+  h1,h2{margin:0}
+  .bigc{height:min(36vh,220px)}
+  .rules{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:8px;font-weight:700;text-align:left;width:100%}
+  .rules li{display:flex;gap:10px;align-items:center;background:var(--panel);border-radius:12px;padding:10px 12px}
+  .rules b{background:var(--accent);color:var(--ink);border-radius:8px;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+  .count{font-size:min(36vw,10rem);font-weight:900;color:var(--accent);line-height:1}
+  /* 퀴즈 */
+  .qbox{background:#244036;border:2px solid #355a4a;border-radius:20px;padding:20px 14px;text-align:center}
+  .qtext{font-size:clamp(1.5rem,6.5vw,2.4rem);font-weight:900;line-height:1.3;word-break:keep-all}
+  .qguide{color:#c6e2d5;margin-top:8px;font-weight:700}
+  #choices{display:grid;grid-template-columns:1fr 1fr;gap:10px;flex:1}
+  .choice{background:var(--panel2);border:2px solid var(--line);border-radius:18px;font-size:clamp(1.15rem,5vw,1.7rem);font-weight:900;min-height:96px;padding:8px;box-shadow:0 5px 0 #0b0c1a;word-break:keep-all}
+  .choice:active{transform:translateY(3px);box-shadow:0 2px 0 #0b0c1a}
+  .choice.bad{background:var(--bad);color:#2b0309}
+  .choice.ok{background:var(--ok);color:#05301b}
+  #textForm{display:flex;flex-direction:column;gap:10px}
+  #textForm input{font-size:1.4rem;padding:16px;text-align:center}
+  #lock{position:fixed;inset:0;background:rgba(10,10,24,.78);z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:1.5rem;font-weight:900}
+  /* 달리기 */
+  .track{position:relative;height:110px;background:#0e1024;border-radius:18px;border:2px dashed var(--line);overflow:hidden}
+  .track i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,rgba(91,140,255,.25),rgba(255,210,63,.45))}
+  .track img{position:absolute;bottom:4px;height:96px;transform:translateX(-50%)}
+  .track .flag{position:absolute;right:8px;top:8px;font-size:1.8rem}
+  .feet{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:42vh}
+  .foot{border-radius:24px;font-size:clamp(1.6rem,8vw,2.6rem);font-weight:900;border:4px solid;box-shadow:0 7px 0 #0b0c1a;touch-action:none}
+  .foot.l{background:#3b5bd6;border-color:#8fa8ff;color:#fff}
+  .foot.r{background:#d64a5a;border-color:#ffb0b8;color:#fff}
+  .foot.next{outline:5px solid var(--accent);outline-offset:3px}
+  .foot:active{transform:translateY(4px);box-shadow:0 3px 0 #0b0c1a}
+  /* 10초 */
+  .clock{font-size:min(24vw,7.5rem);font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
+  #stopBtn{background:var(--bad);color:#fff;border:5px solid #ffb0b8;border-radius:50%;width:min(62vw,270px);height:min(62vw,270px);font-size:2.6rem;font-weight:900;box-shadow:0 9px 0 #7a1d29;touch-action:none}
+  #stopBtn:active{transform:translateY(6px);box-shadow:0 3px 0 #7a1d29}
+  /* 문질문질 */
+  #pad{flex:1;min-height:50vh;background:repeating-linear-gradient(90deg,#1e2140 0 40px,#23264a 40px 80px);border:3px solid var(--line);border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:none;position:relative;overflow:hidden}
+  #pad img{height:min(28vh,170px)}
+  #rubCount{font-size:min(20vw,6rem);font-weight:900;color:var(--accent);line-height:1}
+  .wig{animation:wiggle .18s linear infinite}
+  .res-rank{font-size:min(24vw,7rem);font-weight:900;color:var(--accent);line-height:1}
+  .res-box{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%}
+  .res-box div{background:var(--panel);border-radius:16px;padding:12px;text-align:center}
+  .res-box b{display:block;font-size:1.6rem}
+</style>
+</head>
+<body>
+<div id="top">
+  <div class="me" id="meName">교실 아레나</div>
+  <div class="sc hidden" id="scBox"><span class="tag hidden" id="liveRank">-등</span><span id="meTotal">0점</span></div>
+</div>
+<main>
+  <!-- 입장 -->
+  <section class="view center" id="vJoin">
+    <div class="row" style="justify-content:center;gap:0"><img class="char bob" src="/img/duri_main.webp" style="height:150px" alt=""><img class="char bob" src="/img/seoi_main.webp" style="height:150px;animation-delay:.4s" alt=""></div>
+    <h1 style="text-align:center">교실 아레나</h1>
+    <div class="card" style="display:flex;flex-direction:column;gap:12px">
+      <input id="inCode" type="text" inputmode="numeric" maxlength="6" placeholder="참가 코드 6자리" autocomplete="off" style="font-size:1.3rem;text-align:center;letter-spacing:.2em">
+      <input id="inName" type="text" maxlength="10" placeholder="이름 (10자까지)" autocomplete="off" style="font-size:1.2rem;text-align:center">
+      <button class="btn primary big" id="btnJoin">입장하기</button>
+      <div id="joinErr" style="color:var(--bad);min-height:1.2em;text-align:center;font-weight:700"></div>
+    </div>
+  </section>
+
+  <!-- 대기 -->
+  <section class="view center hidden" id="vLobby">
+    <img class="char bob bigc" id="lobbyChar" alt="" style="margin:0 auto">
+    <h2 style="text-align:center">선생님이 게임을 고르는 중이에요</h2>
+    <p class="muted" style="text-align:center;margin:0">화면을 켜 둔 채로 기다려 주세요</p>
+  </section>
+
+  <!-- 미니게임 설명 -->
+  <section class="view center hidden" id="vReady">
+    <img class="char bob" id="readyChar" style="height:min(26vh,160px);margin:0 auto" alt="">
+    <h1 style="text-align:center" id="readyTitle"></h1>
+    <ul class="rules" id="readyRules"></ul>
+    <p class="muted" style="text-align:center;margin:0">선생님이 시작하면 3초 뒤에 시작해요</p>
+  </section>
+
+  <!-- 카운트다운 -->
+  <section class="view center hidden" id="vCount">
+    <div class="muted" style="text-align:center;font-size:1.3rem;font-weight:800" id="countLabel"></div>
+    <div class="count" style="text-align:center" id="countNum">3</div>
+  </section>
+
+  <!-- 달리기 -->
+  <section class="view hidden" id="vRace">
+    <div class="row" style="justify-content:space-between;font-weight:800"><span id="raceInfo">0%</span><span id="raceTime"></span></div>
+    <div class="track"><i id="raceFill"></i><img class="char" id="raceChar" alt=""><span class="flag">🏁</span></div>
+    <div class="feet">
+      <button class="foot l" id="footL">왼발</button>
+      <button class="foot r" id="footR">오른발</button>
+    </div>
+    <div class="muted" style="text-align:center;font-size:.9rem">크롬북은 키보드 ← → 또는 F J 키도 돼요</div>
+  </section>
+
+  <!-- 10초 멈춰라 -->
+  <section class="view center hidden" id="vStop">
+    <div class="muted" style="text-align:center;font-weight:700" id="stopHint">속으로 세다가 딱 10초라고 생각될 때 STOP</div>
+    <div class="clock" style="text-align:center" id="stopClock">0.00</div>
+    <button id="stopBtn" style="margin:10px auto">STOP</button>
+  </section>
+
+  <!-- 문질문질 -->
+  <section class="view hidden" id="vRub">
+    <div class="bar"><i id="rubBar"></i></div>
+    <div id="pad">
+      <img class="char" id="rubChar" alt="">
+      <div id="rubCount">0</div>
+      <div class="muted" style="font-weight:700">여기를 좌우로 문질러요</div>
+    </div>
+  </section>
+
+  <!-- 기다리기 -->
+  <section class="view center hidden" id="vWait">
+    <img class="char bigc" id="waitChar" style="margin:0 auto" alt="">
+    <h2 style="text-align:center" id="waitTitle">끝!</h2>
+    <p class="muted" style="text-align:center;margin:0" id="waitSub">다른 친구들이 끝날 때까지 기다려요</p>
+  </section>
+
+  <!-- 미니게임 결과 -->
+  <section class="view center hidden" id="vResult">
+    <img class="char pop" id="resChar" style="height:min(26vh,170px);margin:0 auto" alt="">
+    <div class="muted" style="text-align:center;font-weight:800" id="resLabel">이번 게임</div>
+    <div class="res-rank" style="text-align:center" id="resRank">-</div>
+    <div style="text-align:center;font-weight:700" id="resRecord"></div>
+    <div class="res-box">
+      <div><span class="muted">이번 점수</span><b id="resPts" style="color:var(--accent)">+0</b></div>
+      <div><span class="muted">누적</span><b id="resTotal">0점 · -등</b></div>
+    </div>
+  </section>
+
+  <!-- 퀴즈 -->
+  <section class="view center hidden" id="vQuizReady">
+    <img class="char bob" id="qrChar" style="height:min(28vh,170px);margin:0 auto" alt="">
+    <h1 style="text-align:center" id="qrTitle">퀴즈</h1>
+    <ul class="rules">
+      <li><b>1</b>문제가 나오면 답을 고르거나 입력해요</li>
+      <li><b>2</b>가장 먼저 맞힌 1명만 정답자</li>
+      <li><b>3</b>틀리면 1.5초 뒤에 다시 도전</li>
+    </ul>
+  </section>
+  <section class="view hidden" id="vQuiz">
+    <div class="qbox"><div class="muted" id="qNum" style="font-weight:800;margin-bottom:6px"></div><div class="qtext" id="qText"></div><div class="qguide" id="qGuide"></div></div>
+    <div id="choices"></div>
+    <form id="textForm" class="hidden" autocomplete="off">
+      <input type="text" id="inAnswer" maxlength="40" placeholder="정답 입력" enterkeyhint="send">
+      <button class="btn primary big" type="submit">제출</button>
+    </form>
+  </section>
+  <div id="lock" class="hidden"><img class="char" id="lockChar" style="height:150px" alt=""><div>틀렸어요</div><div class="muted" style="font-size:1.1rem" id="lockSec"></div></div>
+  <section class="view center hidden" id="vReveal">
+    <img class="char pop" id="rvChar" style="height:min(30vh,190px);margin:0 auto" alt="">
+    <h1 style="text-align:center" id="rvTitle"></h1>
+    <div style="text-align:center;font-size:1.3rem;font-weight:800">정답 · <span style="color:var(--ok)" id="rvAnswer"></span></div>
+    <p class="muted" style="text-align:center;margin:0">다음 문제를 기다려요</p>
+  </section>
+
+  <!-- 최종 -->
+  <section class="view center hidden" id="vFinal">
+    <img class="char pop" id="finChar" style="height:min(30vh,200px);margin:0 auto" alt="">
+    <div class="muted" style="text-align:center;font-weight:800">최종 등수</div>
+    <div class="res-rank" style="text-align:center" id="finRank">-</div>
+    <div style="text-align:center;font-size:1.4rem;font-weight:800" id="finTotal"></div>
+  </section>
+
+  <section class="view center hidden" id="vKick">
+    <img class="char" src="/img/seoi_question.webp" style="height:150px;margin:0 auto" alt="">
+    <h2 style="text-align:center" id="kickMsg">입장이 취소되었어요</h2>
+    <button class="btn" onclick="location.reload()">다시 입장하기</button>
+  </section>
+</main>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/common.js"></script>
+<script>
+(function () {
+  const { $, charSrc, setChar, call } = CA;
+  const VIEWS = ['vJoin', 'vLobby', 'vReady', 'vCount', 'vRace', 'vStop', 'vRub', 'vWait', 'vResult', 'vQuizReady', 'vQuiz', 'vReveal', 'vFinal', 'vKick'];
+  let cur = 'vJoin';
+  const show = (id) => { cur = id; VIEWS.forEach((v) => $(v).classList.toggle('hidden', v !== id)); if (id !== 'vQuiz') $('lock').classList.add('hidden'); };
+  const vib = (p) => { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} };
+
+  const params = new URLSearchParams(location.search);
+  let code = (params.get('c') || '').replace(/\D/g, '').slice(0, 6) || localStorage.getItem('ca_code') || '';
+  let name = localStorage.getItem('ca_name') || '';
+  $('inCode').value = code; $('inName').value = name;
+  if (params.get('c')) setTimeout(() => $('inName').focus(), 200);
+
+  const sock = CA.connect(); CA.connBadge(sock);
+  let offset = 0, myId = null, phase = 'lobby', total = 0;
+  let mini = null;      // {game,title,rules,cfg,startedAt,endsAt}
+  let question = null, lockUntil = 0, sending = false;
+  const sNow = () => Date.now() + offset;
+
+  /* ---------- 화면 켜짐 유지 ---------- */
+  let wake = null;
+  async function keepAwake() { try { if ('wakeLock' in navigator && !wake) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch (e) {} }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && myId) keepAwake(); });
+
+  /* ---------- 입장 ---------- */
+  async function join() {
+    const r = await call(sock, 'player:join', { code, name, playerId: localStorage.getItem('ca_pid_' + code) || undefined });
+    if (!r.ok) {
+      if (r.timeout) { $('joinErr').textContent = r.error; return; }
+      localStorage.removeItem('ca_pid_' + code); myId = null;
+      $('joinErr').textContent = r.error || '입장하지 못했어요'; show('vJoin'); return;
+    }
+    myId = r.playerId;
+    localStorage.setItem('ca_pid_' + code, myId); localStorage.setItem('ca_code', code); localStorage.setItem('ca_name', name);
+    $('meName').textContent = r.snap.name; $('scBox').classList.remove('hidden');
+    keepAwake();
+    offset = await CA.syncTime(sock);
+    applySnap(r.snap);
+  }
+  $('btnJoin').addEventListener('click', () => {
+    code = $('inCode').value.replace(/\D/g, ''); name = $('inName').value.trim();
+    if (code.length !== 6) return void ($('joinErr').textContent = '참가 코드는 6자리예요');
+    if (!name) return void ($('joinErr').textContent = '이름을 입력해 주세요');
+    $('joinErr').textContent = ''; join();
+  });
+  $('inName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnJoin').click(); });
+  // 연결될 때마다(재연결 포함) 이전 입장 기록이 있으면 같은 사람으로 다시 들어감
+  sock.on('connect', () => { if (code && name && localStorage.getItem('ca_pid_' + code)) join(); });
+
+  function setTotal(t) { total = t; $('meTotal').textContent = t + '점'; }
+
+  function applySnap(s) {
+    phase = s.phase; setTotal(s.total);
+    $('liveRank').classList.add('hidden');
+    if (s.mini) mini = s.mini;
+    switch (s.phase) {
+      case 'mini_ready': showReady(); break;
+      case 'mini_play': resumeMini(s.mini.me); break;
+      case 'mini_result': s.result ? showResult(s.result) : showLobby(); break;
+      case 'quiz_ready': showQuizReady(s.quiz.title); break;
+      case 'quiz_open': lockUntil = Date.now() + (s.lockLeft || 0); showQuestion(s.question); break;
+      case 'quiz_reveal': showReveal(s.reveal); break;
+      case 'quiz_summary': showQuizSummary(s.myWins); break;
+      case 'final': showFinal(s.final); break;
+      default: showLobby();
+    }
+  }
+  function showLobby() { phase = 'lobby'; setChar($('lobbyChar'), 'hi'); show('vLobby'); }
+  sock.on('phase:lobby', showLobby);
+  sock.on('score:reset', () => setTotal(0));
+  sock.on('player:kicked', () => { localStorage.removeItem('ca_pid_' + code); myId = null; $('kickMsg').textContent = '선생님이 입장을 취소했어요'; show('vKick'); sock.disconnect(); });
+  sock.on('player:replaced', () => { $('kickMsg').textContent = '다른 창에서 같은 이름으로 접속했어요'; show('vKick'); });
+
+  /* ---------- 미니게임 공통 ---------- */
+  const READY_POSE = { race: 'sing', stop10: 'question', rub: 'angry' };
+  function showReady() {
+    phase = 'mini_ready';
+    setChar($('readyChar'), READY_POSE[mini.game]);
+    $('readyTitle').textContent = mini.title;
+    const ul = $('readyRules'); ul.innerHTML = '';
+    mini.rules.forEach((t, i) => { const li = CA.el('li'); li.append(CA.el('b', null, i + 1), CA.el('span', null, t)); ul.appendChild(li); });
+    show('vReady');
+  }
+  sock.on('mini:ready', (d) => { mini = d; showReady(); });
+  sock.on('mini:play', async (d) => {
+    mini.startedAt = d.startedAt; mini.endsAt = d.endsAt; phase = 'mini_play';
+    resetGameState();
+    $('countLabel').textContent = mini.title; show('vCount');
+    offset = await CA.syncTime(sock); // 시작 직전 시계 다시 맞추기
+  });
+  sock.on('mini:rank', (d) => {
+    const t = $('liveRank'); t.textContent = d.rank + '등'; t.classList.remove('hidden');
+    if (d.v != null && mini) { if (mini.game === 'race') race.srv = d.v; if (mini.game === 'rub') rub.srv = d.v; }
+  });
+  function resumeMini(me) {
+    resetGameState(me);
+    if (sNow() < mini.startedAt) { $('countLabel').textContent = mini.title; show('vCount'); } else enterGame();
+  }
+  function enterGame() {
+    if (mini.game === 'race') { if (race.finished) waitScreen('도착!', 'eat'); else { setChar($('raceChar'), 'sing', 'duri'); show('vRace'); renderRace(); } }
+    else if (mini.game === 'stop10') { if (stop.done) waitScreen('멈췄어요!', 'sleep', '결과는 모두 끝난 뒤에 공개돼요'); else show('vStop'); }
+    else if (mini.game === 'rub') { setChar($('rubChar'), 'angry', 'seoi'); show('vRub'); renderRub(); }
+  }
+  function waitScreen(title, pose, sub) {
+    $('waitTitle').textContent = title; $('waitSub').textContent = sub || '다른 친구들이 끝날 때까지 기다려요';
+    setChar($('waitChar'), pose); show('vWait');
+  }
+  function showResult(r) {
+    phase = 'mini_result'; $('liveRank').classList.add('hidden');
+    setTotal(r.total);
+    if (r.rank == null) { setChar($('resChar'), 'sleep'); $('resRank').textContent = '참여 안 함'; $('resRecord').textContent = ''; }
+    else {
+      setChar($('resChar'), r.rank === 1 ? 'haha' : r.rank <= 3 ? 'love' : r.rank <= Math.ceil(r.count / 2) ? 'sing' : 'eat');
+      $('resRank').textContent = r.rank + '등'; $('resRecord').textContent = r.record;
+    }
+    $('resLabel').textContent = `${mini.title} 결과`;
+    $('resPts').textContent = '+' + r.points; $('resTotal').textContent = `${r.total}점 · ${r.totalRank}등`;
+    show('vResult');
+    if (r.rank === 1) vib([60, 60, 120]);
+  }
+  sock.on('mini:result', (r) => { flushAll(); showResult(r); });
+
+  /* ---------- 게임별 상태 ---------- */
+  const race = { steps: 0, last: null, sent: 0, srv: 0, finished: false, finishMs: null };
+  const stop = { done: false };
+  const rub = { count: 0, sent: 0, srv: 0, anchor: null, dir: 0, down: false };
+  function resetGameState(me) {
+    Object.assign(race, { steps: 0, last: null, sent: 0, srv: 0, finished: false, finishMs: null });
+    Object.assign(stop, { done: false });
+    Object.assign(rub, { count: 0, sent: 0, srv: 0, anchor: null, dir: 0, down: false });
+    if (me) {
+      if (mini.game === 'race') { race.steps = race.sent = race.srv = me.steps || 0; race.finished = me.finishMs != null; }
+      if (mini.game === 'stop10') stop.done = me.stopMs != null;
+      if (mini.game === 'rub') rub.count = rub.sent = rub.srv = me.count || 0;
+    }
+    $('liveRank').classList.add('hidden');
+  }
+  const playing = () => phase === 'mini_play' && sNow() >= mini.startedAt && sNow() <= mini.endsAt;
+
+  // 입력은 화면에 바로 반영하고, 서버에는 0.25초마다 모아서 보냄 (무료 서버에서 50명이 연타해도 버티도록)
+  // 서버가 1초마다 보내 주는 내 기록(v)이 화면보다 적으면, 빠진 만큼 다시 보냄
+  let lastSend = 0;
+  function flushAll() {
+    if (phase !== 'mini_play' || !mini) return;
+    const t = Date.now();
+    const resend = t - lastSend > 1200;
+    if (mini.game === 'race' && race.steps > race.srv && (race.steps !== race.sent || resend)) {
+      race.sent = race.steps; lastSend = t;
+      sock.emit('mini:act', { steps: race.steps, elapsed: race.finishMs != null ? race.finishMs : sNow() - mini.startedAt });
+    }
+    if (mini.game === 'rub' && rub.count > rub.srv && (rub.count !== rub.sent || resend)) {
+      rub.sent = rub.count; lastSend = t;
+      sock.emit('mini:act', { count: rub.count });
+    }
+  }
+  setInterval(flushAll, 250);
+
+  /* 달리기 */
+  function step(side) {
+    if (!playing() || race.finished || mini.game !== 'race') return;
+    if (side === race.last) { $('raceInfo').textContent = '번갈아 눌러요!'; return; }
+    race.last = side; race.steps++;
+    if (race.steps >= mini.cfg.goal) {
+      race.steps = mini.cfg.goal; race.finished = true; race.finishMs = sNow() - mini.startedAt;
+      flushAll(); vib(80);
+      waitScreen(`도착! ${(race.finishMs / 1000).toFixed(2)}초`, 'eat');
+      return;
+    }
+    renderRace();
+  }
+  function renderRace() {
+    const pct = Math.min(100, race.steps / mini.cfg.goal * 100);
+    $('raceFill').style.width = pct + '%';
+    $('raceChar').style.left = Math.max(10, Math.min(88, pct)) + '%';
+    $('raceChar').src = charSrc(race.steps % 2 ? 'sing' : 'hi', 'duri');
+    $('raceInfo').textContent = Math.round(pct) + '%';
+    $('footL').classList.toggle('next', race.last !== 'L');
+    $('footR').classList.toggle('next', race.last === 'L');
+  }
+  ['L', 'R'].forEach((s) => $('foot' + s).addEventListener('pointerdown', (e) => { e.preventDefault(); step(s); }));
+  document.addEventListener('keydown', (e) => {
+    if (e.repeat || cur !== 'vRace') return;
+    if (e.key === 'ArrowLeft' || e.key === 'f' || e.key === 'F') step('L');
+    if (e.key === 'ArrowRight' || e.key === 'j' || e.key === 'J') step('R');
+  });
+
+  /* 10초 */
+  $('stopBtn').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (stop.done || !playing() || mini.game !== 'stop10') return;
+    const elapsed = sNow() - mini.startedAt;
+    stop.done = true; vib(60);
+    const send = (n) => sock.timeout(3000).emit('mini:act', { elapsed }, (err) => { if (err && n < 6) setTimeout(() => send(n + 1), 400); });
+    send(0);
+    waitScreen('멈췄어요!', 'sleep', '결과는 모두 끝난 뒤에 공개돼요');
+  });
+
+  /* 문질문질 */
+  const pad = $('pad');
+  function rubMove(x) {
+    if (!playing() || mini.game !== 'rub') return;
+    if (rub.anchor == null) { rub.anchor = x; return; }
+    const dx = x - rub.anchor;
+    if (Math.abs(dx) < 22) return;
+    const dir = dx > 0 ? 1 : -1;
+    if (dir !== rub.dir) { if (rub.dir !== 0) { rub.count++; renderRub(); } rub.dir = dir; }
+    rub.anchor = x;
+  }
+  pad.addEventListener('pointerdown', (e) => { e.preventDefault(); rub.down = true; rub.anchor = e.clientX; try { pad.setPointerCapture(e.pointerId); } catch (x) {} });
+  pad.addEventListener('pointermove', (e) => { if (rub.down || e.pointerType === 'touch') rubMove(e.clientX); });
+  ['pointerup', 'pointercancel'].forEach((ev) => pad.addEventListener(ev, () => { rub.down = false; rub.anchor = null; }));
+  document.addEventListener('keydown', (e) => { // 크롬북 키보드: ← → 번갈아
+    if (e.repeat || cur !== 'vRub') return;
+    if (e.key === 'ArrowLeft' && rub.dir !== -1) { if (rub.dir) rub.count++; rub.dir = -1; renderRub(); }
+    if (e.key === 'ArrowRight' && rub.dir !== 1) { if (rub.dir) rub.count++; rub.dir = 1; renderRub(); }
+  });
+  function renderRub() {
+    $('rubCount').textContent = rub.count;
+    $('rubChar').classList.toggle('wig', rub.count > 0 && playing());
+  }
+
+  /* 화면 타이머 */
+  setInterval(() => {
+    const n = sNow();
+    if (phase === 'mini_play' && mini) {
+      if (cur === 'vCount') {
+        const left = mini.startedAt - n;
+        if (left <= 0) enterGame(); else $('countNum').textContent = Math.ceil(left / 1000);
+      }
+      const left = Math.max(0, mini.endsAt - n), all = mini.endsAt - mini.startedAt;
+      if (cur === 'vRace') $('raceTime').textContent = Math.ceil(left / 1000) + '초';
+      if (cur === 'vRub') { $('rubBar').style.width = (left / all * 100) + '%'; if (left <= 0) waitScreen('시간 끝!', 'sleep', '결과를 기다려요'); }
+      if (cur === 'vStop') { const e = Math.max(0, n - mini.startedAt); $('stopClock').textContent = e < mini.cfg.hideAfter ? (e / 1000).toFixed(2) : '?.??'; }
+    }
+    if (cur === 'vQuiz') {
+      const lk = lockUntil - Date.now();
+      $('lock').classList.toggle('hidden', lk <= 0);
+      if (lk > 0) $('lockSec').textContent = (lk / 1000).toFixed(1) + '초 뒤에 다시 도전';
+    }
+  }, 50);
+
+  /* ---------- 퀴즈 ---------- */
+  function showQuizReady(title) { phase = 'quiz_ready'; $('qrTitle').textContent = title; setChar($('qrChar'), 'question'); show('vQuizReady'); }
+  sock.on('quiz:ready', (d) => showQuizReady(d.title));
+  function showQuestion(q) {
+    phase = 'quiz_open'; question = q; sending = false;
+    $('qNum').textContent = `${q.n} / ${q.total}`; $('qText').textContent = q.q; $('qGuide').textContent = q.guide || '';
+    const box = $('choices'); box.innerHTML = '';
+    const isChoice = q.type === 'choice';
+    box.classList.toggle('hidden', !isChoice); $('textForm').classList.toggle('hidden', isChoice);
+    if (isChoice) q.choices.forEach((c, i) => {
+      const b = CA.el('button', 'choice', c);
+      b.addEventListener('pointerdown', (e) => { e.preventDefault(); answer({ choice: i }, b); });
+      box.appendChild(b);
+    });
+    else { $('inAnswer').value = ''; }
+    show('vQuiz');
+    if (!isChoice) setTimeout(() => $('inAnswer').focus(), 50);
+  }
+  sock.on('quiz:open', (d) => { lockUntil = 0; showQuestion(d.question); });
+  async function answer(payload, btn) {
+    if (sending || Date.now() < lockUntil || phase !== 'quiz_open') return;
+    sending = true;
+    const r = await call(sock, 'quiz:answer', { n: question.n, ...payload }, 4000);
+    sending = false;
+    if (!r.ok) { if (r.locked) lockUntil = Date.now() + r.locked; return; }
+    if (r.correct) { if (btn) btn.classList.add('ok'); vib([50, 40, 50]); return; } // 곧 reveal 이벤트가 옴
+    vib(150);
+    if (btn) { btn.classList.add('bad', 'shake'); setTimeout(() => btn.classList.remove('bad', 'shake'), 400); }
+    else { $('inAnswer').classList.add('shake'); setTimeout(() => $('inAnswer').classList.remove('shake'), 400); $('inAnswer').select(); }
+    lockUntil = Date.now() + (r.lock || 1500);
+    setChar($('lockChar'), 'sad');
+  }
+  $('textForm').addEventListener('submit', (e) => { e.preventDefault(); const v = $('inAnswer').value.trim(); if (v) answer({ text: v }, null); });
+  function showReveal(rv) {
+    phase = 'quiz_reveal';
+    const mine = rv.winner && rv.winner.id === myId;
+    if (mine) { setChar($('rvChar'), 'haha'); $('rvTitle').textContent = '내가 1등 정답!'; vib([80, 50, 160]); }
+    else if (rv.winner) { setChar($('rvChar'), 'love'); $('rvTitle').textContent = `${rv.winner.name} 님이 먼저 맞혔어요`; }
+    else { setChar($('rvChar'), 'sad'); $('rvTitle').textContent = '아무도 못 맞혔어요'; }
+    $('rvAnswer').textContent = rv.answer;
+    show('vReveal');
+  }
+  sock.on('quiz:reveal', showReveal);
+  function showQuizSummary(wins) {
+    phase = 'quiz_summary';
+    setChar($('waitChar'), wins ? 'haha' : 'sing');
+    $('waitTitle').textContent = '퀴즈 끝!';
+    $('waitSub').textContent = wins ? `1등 정답 ${wins}번! 대단해요` : '다음 게임을 기다려요';
+    show('vWait');
+  }
+  sock.on('quiz:summary', (d) => { if (d && d.myWins != null) showQuizSummary(d.myWins); });
+
+  /* ---------- 최종 ---------- */
+  function showFinal(f) {
+    phase = 'final';
+    setChar($('finChar'), f.rank === 1 ? 'haha' : f.rank <= 3 ? 'love' : 'sing');
+    $('finRank').textContent = f.rank ? f.rank + '등' : '-'; $('finTotal').textContent = `누적 ${f.total}점 · ${f.count}명 중`;
+    show('vFinal');
+  }
+  sock.on('phase:final', showFinal);
+
+  show('vJoin');
+})();
+</script>
+</body>
+</html>

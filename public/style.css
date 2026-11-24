@@ -1,0 +1,42 @@
+:root{
+  --bg:#141629; --panel:#1e2140; --panel2:#2a2e55; --line:#3a3f72;
+  --text:#f6f3ec; --sub:#aeb2d6; --accent:#ffd23f; --ink:#2a2200;
+  --ok:#3ddc97; --bad:#ff5c6c; --red:#e0574f; --green:#4f9a4a; --blue:#5b8cff;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);
+  font-family:"Pretendard","Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;-webkit-text-size-adjust:100%}
+body{background:radial-gradient(1200px 700px at 50% -15%,#2a2f6a 0%,var(--bg) 65%) fixed;min-height:100vh}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;touch-action:manipulation}
+.hidden{display:none!important}
+.muted{color:var(--sub)}
+.btn{background:var(--panel2);border:2px solid var(--line);border-radius:14px;padding:12px 18px;font-weight:800;box-shadow:0 4px 0 #0b0c1a;transition:transform .05s}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 #0b0c1a}
+.btn.primary{background:var(--accent);color:var(--ink);border-color:#ffe794}
+.btn.danger{background:#4d2333;border-color:#7d3448}
+.btn.big{padding:16px 30px;font-size:1.3rem;border-radius:18px}
+.btn[disabled]{opacity:.4;pointer-events:none}
+input[type=text],input[type=url],select,textarea{background:#0e1024;border:2px solid var(--line);border-radius:12px;padding:12px 14px;width:100%;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+.card{background:var(--panel);border:2px solid var(--line);border-radius:22px;padding:20px}
+.tag{display:inline-block;background:var(--accent);color:var(--ink);font-weight:900;border-radius:12px;padding:5px 12px}
+.chip{display:inline-flex;align-items:center;gap:4px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:6px 12px;margin:3px;font-weight:700}
+.chip.off{opacity:.35}
+.center{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.bar{height:12px;border-radius:99px;background:#0e1024;overflow:hidden}
+.bar>i{display:block;height:100%;width:100%;background:var(--accent)}
+.char{display:block;object-fit:contain;pointer-events:none;user-select:none;-webkit-user-drag:none}
+table{width:100%;border-collapse:collapse}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--sub);font-weight:700}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#4d2333;border:2px solid #7d3448;border-radius:14px;padding:12px 20px;z-index:100;font-weight:700;max-width:90vw}
+#conn{position:fixed;top:8px;left:50%;transform:translateX(-50%);background:#4d2333;border:2px solid #7d3448;border-radius:10px;padding:6px 12px;z-index:100;font-size:.9rem;font-weight:700}
+@keyframes pop{0%{transform:scale(.85)}60%{transform:scale(1.06)}100%{transform:scale(1)}}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@keyframes wiggle{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(6deg)}}
+.pop{animation:pop .3s ease}
+.shake{animation:shake .25s ease}
+.bob{animation:bob 1.6s ease-in-out infinite}
