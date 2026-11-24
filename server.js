@@ -5,7 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { Server } = require('socket.io');
 const QRCode = require('qrcode');
-const { MINIGAMES, GRACE_MS } = require('./lib/minigames');
+const { MINIGAMES, GRACE_MS, makePattern } = require('./lib/minigames');
 const sheet = require('./lib/sheet');
 
 const PORT = process.env.PORT || 3000;
@@ -13,7 +13,9 @@ const DEFAULT_MAX = 50;          // 방 기본 인원
 const HARD_MAX = 80;             // 관리자가 늘릴 수 있는 최대 인원
 const LOCK_MS = 1500;            // 퀴즈 오답 시 잠금
 const ROOM_TTL_MS = 8 * 3600e3;  // 8시간 활동 없으면 방 삭제
-const TICK_MS = 200;             // 실시간 순위 전송 간격
+const TICK_MS = 200;             // 실시간 전송 간격
+const AHEAD_N = 6;               // 레이스에서 보여 줄 앞사람 수
+const DEFAULT_QUIZ_TITLE = '보드게임 퀴즈';
 
 const app = express();
 const server = http.createServer(app);
@@ -25,7 +27,7 @@ const io = new Server(server, {
   perMessageDeflate: false,
 });
 
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h', extensions: ['html'] }));
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '10m', extensions: ['html'] }));
 app.get('/favicon.ico', (_q, r) => r.status(204).end());
 app.get('/healthz', (_q, r) => r.type('text').send('ok'));
 app.get('/qr', async (req, res) => {
@@ -55,10 +57,8 @@ function createRoom() {
   const room = {
     code: makeCode(), hostKey: rid(16), maxPlayers: DEFAULT_MAX,
     players: new Map(), phase: 'lobby',
-    rounds: [],          // 끝난 미니게임 목록 [{n, game, title}]
-    mini: null,          // 진행 중/직전 미니게임
-    quiz: null,          // 진행 중/직전 퀴즈
-    dirtyPlayers: true, dirtyLive: false, lastActive: now(),
+    rounds: [], mini: null, quiz: null,
+    dirtyPlayers: true, dirtyLive: false, tickN: 0, lastActive: now(),
   };
   room.tick = setInterval(() => roomTick(room), TICK_MS);
   rooms.set(room.code, room);
@@ -84,21 +84,21 @@ function rankList(items, cmp) {
     return { item: x, rank };
   });
 }
-const pointsFor = (rank) => Math.max(1, 51 - rank); // 1등 50점, n등 51-n점 (51등 이하는 1점)
+const pointsFor = (rank) => Math.max(1, 51 - rank); // 1등 50점, n등 51-n점 (51등 이하 1점)
 
 function totalRanking(room) {
   return rankList([...room.players.values()], (a, b) => b.total - a.total)
     .map(({ item: p, rank }) => ({ rank, id: p.id, name: p.name, total: p.total, connected: p.connected }));
 }
-
 function scoresPayload(room) {
-  return {
-    rounds: room.rounds,
-    players: totalRanking(room).map((r) => ({ ...r, pts: room.players.get(r.id).pts })),
-  };
+  return { rounds: room.rounds, players: totalRanking(room).map((r) => ({ ...r, pts: room.players.get(r.id).pts })) };
 }
 
 /* ---- 스냅샷 (새로고침·재접속 시 현재 화면 복원) ---- */
+function miniInfo(room) {
+  const m = room.mini, G = MINIGAMES[m.game];
+  return { game: m.game, title: G.title, icon: G.icon, rules: G.rules, cfg: m.cfg, phoneOnly: !!G.phoneOnly };
+}
 function quizQuestionPublic(room) {
   const z = room.quiz; const q = z.questions[z.idx];
   return { n: z.idx + 1, total: z.questions.length, q: q.q, guide: q.guide, type: q.type, choices: q.choices || null };
@@ -107,13 +107,13 @@ function quizRevealPublic(room) {
   const z = room.quiz; const w = z.winners[z.idx];
   return { n: z.idx + 1, answer: z.questions[z.idx].answerText, winner: w ? { id: w.id, name: w.name, ms: w.ms } : null };
 }
+const pub = (p) => ({ id: p.id, name: p.name, connected: p.connected, hue: p.hue });
 
 function playerSnapshot(room, p) {
-  const s = { phase: room.phase, name: p.name, total: p.total, serverNow: now() };
+  const s = { phase: room.phase, name: p.name, hue: p.hue, total: p.total, serverNow: now() };
   if (room.phase.startsWith('mini_')) {
-    const m = room.mini, G = MINIGAMES[m.game];
-    s.mini = { game: m.game, title: G.title, rules: G.rules, cfg: m.cfg, startedAt: m.startedAt, endsAt: m.endsAt, me: p.g };
-    if (room.phase === 'mini_result') s.result = m.resultFor && m.resultFor[p.id];
+    s.mini = { ...miniInfo(room), startedAt: room.mini.startedAt, endsAt: room.mini.endsAt, me: p.g };
+    if (room.phase === 'mini_result') s.result = room.mini.resultFor && room.mini.resultFor[p.id];
   }
   if (room.phase.startsWith('quiz_')) {
     const z = room.quiz;
@@ -134,10 +134,7 @@ function hostSnapshot(room) {
     code: room.code, phase: room.phase, maxPlayers: room.maxPlayers, serverNow: now(),
     players: [...room.players.values()].map(pub), scores: scoresPayload(room),
   };
-  if (room.mini) {
-    const m = room.mini, G = MINIGAMES[m.game];
-    s.mini = { game: m.game, title: G.title, rules: G.rules, cfg: m.cfg, startedAt: m.startedAt, endsAt: m.endsAt, result: m.result || null };
-  }
+  if (room.mini) s.mini = { ...miniInfo(room), startedAt: room.mini.startedAt, endsAt: room.mini.endsAt, result: room.mini.result || null };
   if (room.quiz) {
     const z = room.quiz;
     s.quiz = { title: z.title, total: z.questions.length, idx: z.idx, summary: quizSummary(room) };
@@ -146,7 +143,6 @@ function hostSnapshot(room) {
   }
   return s;
 }
-const pub = (p) => ({ id: p.id, name: p.name, connected: p.connected });
 
 function quizSummary(room) {
   const z = room.quiz;
@@ -158,37 +154,64 @@ function quizSummary(room) {
 }
 
 /* ---- 주기 전송 ---- */
+// 학생 한 명에게 바로 보내기 (방 전체 방송 경로를 거치지 않아 더 가벼움)
+function sendTo(p, ev, data) {
+  const sk = p.socketId && io.sockets.sockets.get(p.socketId);
+  if (sk) sk.emit(ev, data);
+}
 function roomTick(room) {
   if (now() - room.lastActive > ROOM_TTL_MS) return destroyRoom(room);
+  room.tickN++;
   if (room.dirtyPlayers) {
     room.dirtyPlayers = false;
     io.to(H(room)).emit('host:players', [...room.players.values()].map(pub));
   }
-  if (room.phase === 'mini_play' && room.dirtyLive) {
-    room.dirtyLive = false;
-    const m = room.mini, G = MINIGAMES[m.game];
-    const ps = [...room.players.values()];
-    const ranked = rankList(ps, (a, b) => G.compare(a.g, b.g));
-    io.to(H(room)).emit('host:live', {
-      top: ranked.slice(0, 12).map(({ item: p, rank }) => ({ rank, name: p.name, ...G.live(p.g, m.cfg) })),
-      count: ps.length, done: ps.filter((p) => G.done(p.g)).length,
-      played: ps.filter((p) => G.participated(p.g)).length, connected: ps.filter((p) => p.connected).length,
-    });
-    // 학생 개인 순위는 1초에 한 번만 보냄 (무료 서버 CPU 절약). 10초 게임은 결과 공개 전까지 숨김
-    room.rankTick = (room.rankTick || 0) + 1;
-    if (m.game !== 'stop10' && room.rankTick % 5 === 0) {
-      ranked.forEach(({ item: p, rank }) => {
-        if (p.connected && p.socketId) io.to(p.socketId).emit('mini:rank', { rank, count: ps.length, v: m.game === 'race' ? p.g.steps : p.g.count });
+  // 미니게임 실시간 화면은 0.4초마다 (무료 서버 CPU 절약)
+  if (room.phase !== 'mini_play' || !room.dirtyLive || room.tickN % 2) return;
+  room.dirtyLive = false;
+  const m = room.mini, G = MINIGAMES[m.game];
+  const ps = [...room.players.values()];
+  const ranked = rankList(ps.filter((p) => !p.g.spectate), (a, b) => G.compare(a.g, b.g));
+  io.to(H(room)).emit('host:live', {
+    top: ranked.slice(0, 12).map(({ item: p, rank }) => ({ rank, name: p.name, hue: p.hue, ...G.live(p.g, m.cfg) })),
+    count: ps.length, done: ps.filter((p) => G.done(p.g)).length,
+    played: ps.filter((p) => G.participated(p.g)).length, connected: ps.filter((p) => p.connected).length,
+    spectators: ps.filter((p) => p.g.spectate).length,
+  });
+  if (m.game === 'stop10') return; // 마음속 시계는 결과 공개 전까지 순위를 숨김
+
+  if (m.game === 'race') {
+    // 각 학생에게 '내 바로 앞에 있는 6명'의 위치만 보냄 (뒤에 있는 사람은 안 보냄)
+    {
+      const sorted = ranked.map((r) => r.item); // 앞선 순서
+      sorted.forEach((p, i) => {
+        if (!p.connected || !p.socketId) return;
+        const ahead = [];
+        for (let j = i - 1; j >= 0 && ahead.length < AHEAD_N; j--) {
+          const q = sorted[j];
+          if (q.g.steps > p.g.steps) ahead.push([q.name, q.g.steps, q.hue]);
+        }
+        sendTo(p, 'race:view', { rank: ranked[i].rank, count: sorted.length, v: p.g.steps, a: ahead });
       });
-    } else if (m.game !== 'stop10') room.dirtyLive = true; // 다음 순위 전송 때 다시 계산되도록 유지
+    }
+    room.dirtyLive = true;
+    return;
   }
+  // 다른 게임: 1초마다 내 순위와 서버에 저장된 내 기록(v) 전송
+  if (room.tickN % 6 === 0) {
+    ranked.forEach(({ item: p, rank }) => {
+      if (p.connected && p.socketId) sendTo(p, 'mini:rank', { rank, count: ranked.length, v: G.live(p.g, m.cfg).v, raw: p.g });
+    });
+  }
+  room.dirtyLive = true;
 }
 
 /* ---- 미니게임 ---- */
 function startMini(room, game, cfgIn) {
   const G = MINIGAMES[game];
   const cfg = G.config(cfgIn || {});
-  room.mini = { game, cfg, startedAt: 0, endsAt: 0, timer: null, result: null, resultFor: null };
+  cfg.seed = Math.floor(Math.random() * 2 ** 31); // 모두 같은 패턴을 만들기 위한 씨앗 숫자
+  room.mini = { game, cfg, pattern: makePattern(game, cfg), startedAt: 0, endsAt: 0, timer: null, result: null, resultFor: null };
   for (const p of room.players.values()) p.g = G.init();
   room.phase = 'mini_ready';
 }
@@ -212,24 +235,26 @@ function endMini(room) {
   const m = room.mini, G = MINIGAMES[m.game];
   clearTimeout(m.timer);
   const ps = [...room.players.values()];
-  const playedList = ps.filter((p) => G.participated(p.g));
-  const ranked = rankList(playedList, (a, b) => G.compare(a.g, b.g));
+  const ranked = rankList(ps.filter((p) => G.participated(p.g)), (a, b) => G.compare(a.g, b.g));
   const n = room.rounds.length + 1;
   room.rounds.push({ n, game: m.game, title: G.title });
   const rows = [];
-  const resultFor = {};
   for (const { item: p, rank } of ranked) {
     const pts = pointsFor(rank);
     p.total += pts; p.pts[n] = pts;
     rows.push({ rank, id: p.id, name: p.name, record: G.record(p.g, m.cfg), points: pts });
   }
   for (const p of ps) {
-    if (!G.participated(p.g)) { p.pts[n] = 0; rows.push({ rank: null, id: p.id, name: p.name, record: '참여 안 함', points: 0 }); }
+    if (G.participated(p.g)) continue;
+    if (p.g.spectate) { p.pts[n] = null; rows.push({ rank: null, id: p.id, name: p.name, record: '구경 (크롬북)', points: null, spectate: true }); }
+    else { p.pts[n] = 0; rows.push({ rank: null, id: p.id, name: p.name, record: '참여 안 함', points: 0 }); }
   }
-  const tr = totalRanking(room);
-  const trMap = new Map(tr.map((x) => [x.id, x.rank]));
-  rows.forEach((r) => { r.total = room.players.get(r.id).total; r.totalRank = trMap.get(r.id); });
-  for (const r of rows) resultFor[r.id] = { rank: r.rank, points: r.points, record: r.record, total: r.total, totalRank: r.totalRank, count: ranked.length };
+  const trMap = new Map(totalRanking(room).map((x) => [x.id, x.rank]));
+  const resultFor = {};
+  for (const r of rows) {
+    r.total = room.players.get(r.id).total; r.totalRank = trMap.get(r.id);
+    resultFor[r.id] = { rank: r.rank, points: r.points, record: r.record, total: r.total, totalRank: r.totalRank, count: ranked.length, spectate: !!r.spectate };
+  }
   m.result = { n, rows }; m.resultFor = resultFor;
   room.phase = 'mini_result';
   for (const p of ps) if (p.connected && p.socketId) io.to(p.socketId).emit('mini:result', resultFor[p.id]);
@@ -239,7 +264,7 @@ function endMini(room) {
 function checkMiniDone(room) {
   if (room.phase !== 'mini_play') return;
   const G = MINIGAMES[room.mini.game];
-  const conn = [...room.players.values()].filter((p) => p.connected);
+  const conn = [...room.players.values()].filter((p) => p.connected && !p.g.spectate);
   if (conn.length && conn.every((p) => G.done(p.g))) setTimeout(() => endMini(room), 700);
 }
 
@@ -264,7 +289,6 @@ function sanitizeQuiz(list) {
   }
   return out;
 }
-
 function openQuestion(room) {
   const z = room.quiz;
   z.openedAt = now(); z.attempts = 0;
@@ -274,7 +298,6 @@ function openQuestion(room) {
   io.to(P(room)).emit('quiz:open', { question: q });
   io.to(H(room)).emit('quiz:open', { question: q, openedAt: z.openedAt, serverNow: now() });
 }
-
 function revealQuestion(room, winner) {
   const z = room.quiz;
   if (room.phase !== 'quiz_open') return;
@@ -283,6 +306,13 @@ function revealQuestion(room, winner) {
   const rv = quizRevealPublic(room);
   io.to(P(room)).emit('quiz:reveal', rv);
   io.to(H(room)).emit('quiz:reveal', { reveal: rv, summary: quizSummary(room) });
+}
+function quizToSummary(room) {
+  const z = room.quiz;
+  room.phase = 'quiz_summary';
+  for (const p of room.players.values()) {
+    if (p.connected && p.socketId) io.to(p.socketId).emit('quiz:summary', { myWins: z.winners.filter((w) => w && w.id === p.id).length });
+  }
 }
 
 /* ================= 소켓 ================= */
@@ -294,12 +324,12 @@ io.on('connection', (socket) => {
     const p = room && room.players.get(socket.data.playerId);
     return p && p.socketId === socket.id ? { room, p } : null;
   };
-  // 관리자 이벤트 공통 처리: 방 확인 + 오류가 나도 서버가 죽지 않게
-  const hostOn = (ev, fn) => socket.on(ev, (d, cb) => {
+  // 관리자 이벤트 공통 처리: 방 확인 + 오류가 나도 서버가 멈추지 않게
+  const hostOn = (ev, fn) => socket.on(ev, async (d, cb) => {
     const room = hostRoom();
     if (!room) return ack(cb, { ok: false, error: '방 연결이 끊겼어요. 새로고침해 주세요.' });
     touch(room);
-    try { fn(room, d || {}, cb); } catch (e) { console.error(ev, e); ack(cb, { ok: false, error: '처리 중 오류가 났어요.' }); }
+    try { await fn(room, d || {}, cb); } catch (e) { console.error(ev, e); ack(cb, { ok: false, error: '처리 중 오류가 났어요.' }); }
   });
 
   socket.on('time:sync', (_d, cb) => ack(cb, now()));
@@ -359,10 +389,9 @@ io.on('connection', (socket) => {
   // 미니게임
   hostOn('host:miniReady', (room, d, cb) => {
     if (!MINIGAMES[d.game]) return ack(cb, { ok: false, error: '없는 게임이에요.' });
-    if (room.phase === 'mini_play' || room.phase.startsWith('quiz_open')) return ack(cb, { ok: false, error: '진행 중인 게임을 먼저 끝내 주세요.' });
+    if (room.phase === 'mini_play' || room.phase === 'quiz_open') return ack(cb, { ok: false, error: '진행 중인 게임을 먼저 끝내 주세요.' });
     startMini(room, d.game, d.cfg);
-    const m = room.mini, G = MINIGAMES[m.game];
-    const info = { game: m.game, title: G.title, rules: G.rules, cfg: m.cfg };
+    const info = miniInfo(room);
     io.to(P(room)).emit('mini:ready', info);
     ack(cb, { ok: true, mini: info });
   });
@@ -386,7 +415,7 @@ io.on('connection', (socket) => {
     if (room.phase === 'mini_play') return ack(cb, { ok: false, error: '진행 중인 게임을 먼저 끝내 주세요.' });
     const questions = sanitizeQuiz(d.questions);
     if (!questions.length) return ack(cb, { ok: false, error: '문제가 없어요. 시트를 먼저 불러와 주세요.' });
-    room.quiz = { title: clean(d.title, 40) || '퀴즈', questions, idx: -1, winners: [], openedAt: 0, attempts: 0 };
+    room.quiz = { title: clean(d.title, 40) || DEFAULT_QUIZ_TITLE, questions, idx: -1, winners: [], openedAt: 0, attempts: 0 };
     room.phase = 'quiz_ready';
     io.to(P(room)).emit('quiz:ready', { title: room.quiz.title, total: questions.length });
     ack(cb, { ok: true, snap: hostSnapshot(room) });
@@ -394,13 +423,7 @@ io.on('connection', (socket) => {
   hostOn('host:quizNext', (room, _d, cb) => {
     const z = room.quiz;
     if (!z || !['quiz_ready', 'quiz_reveal'].includes(room.phase)) return ack(cb, { ok: false, error: '지금은 다음 문제로 넘길 수 없어요.' });
-    if (z.idx + 1 >= z.questions.length) {
-      room.phase = 'quiz_summary';
-      for (const p of room.players.values()) {
-        if (p.connected && p.socketId) io.to(p.socketId).emit('quiz:summary', { myWins: z.winners.filter((w) => w && w.id === p.id).length });
-      }
-      return ack(cb, { ok: true, summary: quizSummary(room) });
-    }
+    if (z.idx + 1 >= z.questions.length) { quizToSummary(room); return ack(cb, { ok: true, summary: quizSummary(room) }); }
     z.idx++;
     openQuestion(room);
     ack(cb, { ok: true });
@@ -409,10 +432,7 @@ io.on('connection', (socket) => {
   hostOn('host:quizEnd', (room, _d, cb) => {
     if (!room.quiz) return ack(cb, { ok: false });
     if (room.phase === 'quiz_open') revealQuestion(room, null);
-    room.phase = 'quiz_summary';
-    for (const p of room.players.values()) {
-      if (p.connected && p.socketId) io.to(p.socketId).emit('quiz:summary', { myWins: room.quiz.winners.filter((w) => w && w.id === p.id).length });
-    }
+    quizToSummary(room);
     ack(cb, { ok: true, summary: quizSummary(room) });
   });
 
@@ -428,8 +448,7 @@ io.on('connection', (socket) => {
       if (!name) return ack(cb, { ok: false, error: '이름을 입력해 주세요.' });
       const taken = new Set([...room.players.values()].map((x) => x.name));
       if (taken.has(name)) { let k = 2; while (taken.has(`${name}(${k})`)) k++; name = `${name}(${k})`; }
-      p = { id: rid(8), name, socketId: null, connected: false, total: 0, pts: {}, g: null, quizLock: 0 };
-      if (room.mini) p.g = MINIGAMES[room.mini.game].init();
+      p = { id: rid(8), name, hue: Math.floor(Math.random() * 360), socketId: null, connected: false, total: 0, pts: {}, g: null, quizLock: 0 };
       room.players.set(p.id, p);
     }
     if (!p.g && room.mini) p.g = MINIGAMES[room.mini.game].init();
@@ -454,6 +473,15 @@ io.on('connection', (socket) => {
     ack(cb, { ok: true, ...(r || {}) });
   });
 
+  // 센서가 없는 기기(크롬북 등): 이번 판은 구경만 (점수 없음, 누적에서 이 판 제외)
+  socket.on('mini:spectate', (_d, cb) => {
+    const me = meRoom();
+    if (!me || !me.room.mini || !MINIGAMES[me.room.mini.game].phoneOnly) return ack(cb, { ok: false });
+    if (!me.p.g || me.p.g.count > 0) return ack(cb, { ok: false });
+    me.p.g.spectate = true; me.room.dirtyLive = true;
+    ack(cb, { ok: true });
+  });
+
   socket.on('quiz:answer', (d, cb) => {
     const me = meRoom();
     if (!me) return ack(cb, { ok: false });
@@ -461,12 +489,12 @@ io.on('connection', (socket) => {
     if (room.phase !== 'quiz_open' || !z || (d && +d.n !== z.idx + 1)) return ack(cb, { ok: false, closed: true });
     if (t < p.quizLock) return ack(cb, { ok: false, locked: p.quizLock - t });
     const q = z.questions[z.idx];
-    let correct;
-    if (q.type === 'choice') correct = parseInt(d && d.choice, 10) === q.answerIdx;
-    else correct = q.accepts.includes(sheet.norm(String((d && d.text) || '').slice(0, 60)));
+    const correct = q.type === 'choice'
+      ? parseInt(d && d.choice, 10) === q.answerIdx
+      : q.accepts.includes(sheet.norm(String((d && d.text) || '').slice(0, 60)));
     z.attempts++;
     if (correct) {
-      // Node는 이벤트를 하나씩 처리하므로 첫 정답자는 반드시 한 명만 나온다
+      // 서버는 답을 하나씩 차례로 처리하므로 첫 정답자는 반드시 한 명만 나온다
       revealQuestion(room, { id: p.id, name: p.name, ms: t - z.openedAt });
       return ack(cb, { ok: true, correct: true, first: true });
     }
@@ -488,7 +516,6 @@ io.on('connection', (socket) => {
 
 process.on('unhandledRejection', (e) => console.error('unhandledRejection', e));
 process.on('uncaughtException', (e) => console.error('uncaughtException', e));
-
 server.on('error', (e) => { console.error('서버 시작 실패:', e.message); process.exit(1); });
 if (require.main === module) server.listen(PORT, () => console.log(`ClassArena listening on :${PORT}`));
 module.exports = { server, io, rooms };

@@ -63,5 +63,12 @@
     return e;
   }
 
-  window.CA = { $, charSrc, setChar, toast, connBadge, connect, syncTime, call, downloadCSV, el };
+  // 레이스용 졸라맨 아이콘 (색은 사람마다 랜덤)
+  function stickSVG(hue, size) {
+    const c = `hsl(${hue},75%,45%)`;
+    return `<svg width="${size || 28}" height="${size || 28}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.6" stroke-linecap="round">` +
+      `<circle cx="12" cy="5" r="3.2" fill="${c}"/><path d="M12 9v7M12 11l-5 3M12 11l5-2M12 16l-4 6M12 16l4 6"/></svg>`;
+  }
+
+  window.CA = { $, charSrc, setChar, toast, connBadge, connect, syncTime, call, downloadCSV, el, stickSVG };
 })();
