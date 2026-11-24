@@ -672,9 +672,10 @@
   function drawBalloon(dt) {
     const B = S.balloon, e = elapsed();
     if (playing()) {
-      B.v += (B.hold ? 1.7 : -1.35) * dt;
-      B.v *= Math.pow(0.35, dt);
-      B.v = Math.max(-0.9, Math.min(0.9, B.v));
+      // 누르면 빠르게 솟구치고, 떼면 빠르게 떨어짐 (박진감 있게)
+      B.v += (B.hold ? 3.6 : -3.2) * dt;
+      B.v *= Math.pow(0.5, dt);
+      B.v = Math.max(-1.7, Math.min(1.7, B.v));
       B.y += B.v * dt;
       if (B.y < 0) { B.y = 0; B.v = 0; } if (B.y > 1) { B.y = 1; B.v = 0; }
     }
