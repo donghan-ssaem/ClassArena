@@ -244,7 +244,7 @@
     <ul class="rules">
       <li>문제가 나오면 답을 고르거나 입력해요</li>
       <li>가장 먼저 맞힌 한 사람만 정답자로 뽑혀요</li>
-      <li>틀리면 1.5초 쉬었다가 다시 도전</li>
+      <li>틀리면 1.5초 쉬었다가 다시 도전 · 한 번 맞힌 분은 다음 문제부터 구경</li>
     </ul>
   </section>
   <section class="view hidden" id="vQuiz">
@@ -307,6 +307,7 @@
   let offset = 0, myId = null, myHue = 200, phase = 'lobby';
   let mini = null;
   let question = null, lockUntil = 0, sending = false;
+  let quizOneWin = true, quizWon = false; // 이번 퀴즈에서 이미 1등 정답을 맞혔는지
   const sNow = () => Date.now() + offset;
   const elapsed = () => sNow() - mini.startedAt;
   const playing = () => phase === 'mini_play' && mini && sNow() >= mini.startedAt && sNow() <= mini.endsAt;
@@ -351,9 +352,9 @@
       case 'mini_ready': showReady(); break;
       case 'mini_play': resumeMini(s.mini.me); break;
       case 'mini_result': s.result ? showResult(s.result) : showLobby(); break;
-      case 'quiz_ready': showQuizReady(s.quiz.title); break;
-      case 'quiz_open': lockUntil = Date.now() + (s.lockLeft || 0); showQuestion(s.question); break;
-      case 'quiz_reveal': showReveal(s.reveal); break;
+      case 'quiz_ready': quizOneWin = s.quiz.oneWin; quizWon = s.quiz.won; showQuizReady(s.quiz.title); break;
+      case 'quiz_open': quizOneWin = s.quiz.oneWin; quizWon = s.quiz.won; lockUntil = Date.now() + (s.lockLeft || 0); showQuestion(s.question); break;
+      case 'quiz_reveal': quizOneWin = s.quiz.oneWin; quizWon = s.quiz.won; showReveal(s.reveal); break;
       case 'quiz_summary': showQuizSummary(s.myWins); break;
       case 'final': showFinal(s.final); break;
       default: showLobby();
@@ -600,7 +601,9 @@
   function rubTurn(dir) {
     if (!playing() || mini.game !== 'rub') return;
     if (dir !== S.rub.dir) {
-      if (S.rub.dir !== 0) { S.rub.count++; $('rubCount').textContent = S.rub.count; }
+      // 서버와 같은 한도(초당 22번)를 화면에도 적용해서, 보이는 숫자와 결과가 같도록
+      const cap = Math.floor(Math.max(0, elapsed()) / 1000 * 22) + 3;
+      if (S.rub.dir !== 0 && S.rub.count < cap) { S.rub.count++; $('rubCount').textContent = S.rub.count; }
       S.rub.dir = dir; $('deck').className = 'deck ' + (dir > 0 ? 'r' : 'l');
     }
   }
@@ -610,9 +613,19 @@
     if (Math.abs(dx) < 22) return;
     rubTurn(dx > 0 ? 1 : -1); S.rub.anchor = x;
   }
-  pad.addEventListener('pointerdown', (e) => { e.preventDefault(); S.rub.down = true; S.rub.anchor = e.clientX; try { pad.setPointerCapture(e.pointerId); } catch (x) {} });
-  pad.addEventListener('pointermove', (e) => { if (S.rub.down || e.pointerType === 'touch') rubMove(e.clientX); });
-  ['pointerup', 'pointercancel'].forEach((ev) => pad.addEventListener(ev, () => { S.rub.down = false; S.rub.anchor = null; }));
+  // 처음 닿은 손가락 하나만 인정 (여러 손가락으로 문지르면 숫자가 튀는 문제 방지)
+  let rubPid = null;
+  pad.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (rubPid !== null) return;
+    rubPid = e.pointerId; S.rub.down = true; S.rub.anchor = e.clientX;
+    try { pad.setPointerCapture(e.pointerId); } catch (x) {}
+  });
+  pad.addEventListener('pointermove', (e) => { if (e.pointerId === rubPid) rubMove(e.clientX); });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => pad.addEventListener(ev, (e) => {
+    if (e.pointerId !== rubPid) return;
+    rubPid = null; S.rub.down = false; S.rub.anchor = null;
+  }));
   document.addEventListener('keydown', (e) => { if (!e.repeat && cur === 'vRub') { if (e.key === 'ArrowLeft') rubTurn(-1); if (e.key === 'ArrowRight') rubTurn(1); } });
 
   /* ===== 조커 잡기 ===== */
@@ -635,12 +648,18 @@
     for (let i = 0; i < p.length; i++) { const s = p[i]; if (s.t > e) break; if (s.h === h && e < s.t + s.d) return i; }
     return -1;
   }
+  function justGone(h, e) {
+    const p = S.joker.pattern; if (!p) return false;
+    return p.some((s) => s.h === h && e >= s.t + s.d && e < s.t + s.d + 250);
+  }
   function tapSlot(h) {
     if (!playing() || mini.game !== 'joker' || Date.now() < S.joker.lockUntil) return;
-    const i = activeAt(h, elapsed());
+    const e = elapsed(), i = activeAt(h, e);
     if (i >= 0 && !S.joker.got.has(i)) {
       S.joker.got.add(i); S.joker.hits++; $('jkCount').textContent = S.joker.hits; vib(25);
       const s = slots[h]; s.classList.remove('hit'); void s.offsetWidth; s.classList.add('hit');
+    } else if (i >= 0 || justGone(h, e)) {
+      // 이미 잡은 조커를 또 눌렀거나, 막 숨은 조커(0.25초 이내)를 누른 건 봐줌 (벌칙 없음)
     } else {
       S.joker.lockUntil = Date.now() + 500; $('grid').classList.add('locked'); vib(80);
       setTimeout(() => $('grid').classList.remove('locked'), 500);
@@ -658,11 +677,13 @@
 
   /* ===== 하트 풍선 ===== */
   const bPad = $('bPad');
-  const setHold = (v) => { S.balloon.hold = v; $('bSide').classList.toggle('press', v); };
-  bPad.addEventListener('pointerdown', (e) => { e.preventDefault(); setHold(true); try { bPad.setPointerCapture(e.pointerId); } catch (x) {} });
-  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => bPad.addEventListener(ev, () => setHold(false)));
-  document.addEventListener('keydown', (e) => { if (cur === 'vBalloon' && e.code === 'Space') { e.preventDefault(); setHold(true); } });
-  document.addEventListener('keyup', (e) => { if (cur === 'vBalloon' && e.code === 'Space') setHold(false); });
+  const bPtrs = new Set(); let bSpace = false;
+  const refreshHold = () => { S.balloon.hold = bPtrs.size > 0 || bSpace; $('bSide').classList.toggle('press', S.balloon.hold); };
+  const setHold = (v) => { if (!v) { bPtrs.clear(); bSpace = false; } refreshHold(); };
+  bPad.addEventListener('pointerdown', (e) => { e.preventDefault(); bPtrs.add(e.pointerId); try { bPad.setPointerCapture(e.pointerId); } catch (x) {} refreshHold(); });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => bPad.addEventListener(ev, (e) => { bPtrs.delete(e.pointerId); refreshHold(); }));
+  document.addEventListener('keydown', (e) => { if (cur === 'vBalloon' && e.code === 'Space') { e.preventDefault(); bSpace = true; refreshHold(); } });
+  document.addEventListener('keyup', (e) => { if (cur === 'vBalloon' && e.code === 'Space') { bSpace = false; refreshHold(); } });
   function cloudAt(e) {
     const z = S.balloon.zones; if (!z) return { c: 0.5, size: 0.22 };
     const i = Math.max(0, Math.min(z.length - 1, Math.floor(e / 5000)));
@@ -759,9 +780,10 @@
 
   /* ---------- 퀴즈 ---------- */
   function showQuizReady(title) { phase = 'quiz_ready'; $('qrTitle').textContent = title; setChar($('qrChar'), 'question'); show('vQuizReady'); }
-  sock.on('quiz:ready', (d) => showQuizReady(d.title));
+  sock.on('quiz:ready', (d) => { quizOneWin = d.oneWin !== false; quizWon = false; showQuizReady(d.title); });
   function showQuestion(q) {
     phase = 'quiz_open'; question = q; sending = false;
+    if (quizOneWin && quizWon) { waitScreen('이미 정답을 맞혔어요', 'haha', '다른 분들께 기회를 드려요 · 퀴즈가 끝날 때까지 구경해요'); return; }
     $('qNum').textContent = `${q.n} / ${q.total}`; $('qText').textContent = q.q; $('qGuide').textContent = q.guide || '';
     const box = $('choices'); box.innerHTML = '';
     const isChoice = q.type === 'choice';
@@ -781,7 +803,11 @@
     sending = true;
     const r = await call(sock, 'quiz:answer', { n: question.n, ...payload }, 4000);
     sending = false;
-    if (!r.ok) { if (r.locked) lockUntil = Date.now() + r.locked; return; }
+    if (!r.ok) {
+      if (r.locked) lockUntil = Date.now() + r.locked;
+      if (r.already) { quizWon = true; waitScreen('이미 정답을 맞혔어요', 'haha', '다른 분들께 기회를 드려요'); }
+      return;
+    }
     if (r.correct) { if (btn) btn.classList.add('ok'); vib([50, 40, 50]); return; }
     vib(150);
     if (btn) { btn.classList.add('bad', 'shake'); setTimeout(() => btn.classList.remove('bad', 'shake'), 400); }
@@ -793,7 +819,8 @@
   function showReveal(rv) {
     phase = 'quiz_reveal';
     const mine = rv.winner && rv.winner.id === myId;
-    if (mine) { setChar($('rvChar'), 'haha'); $('rvTitle').textContent = '내가 1등 정답!'; vib([80, 50, 160]); }
+    if (mine) quizWon = true;
+    if (mine) { setChar($('rvChar'), 'haha'); $('rvTitle').textContent = quizOneWin ? '내가 1등 정답! 상품 당첨' : '내가 1등 정답!'; vib([80, 50, 160]); }
     else if (rv.winner) { setChar($('rvChar'), 'love'); $('rvTitle').textContent = `${rv.winner.name} 님이 먼저 맞혔어요`; }
     else { setChar($('rvChar'), 'sad'); $('rvTitle').textContent = '아무도 못 맞혔어요'; }
     $('rvAnswer').textContent = rv.answer;

@@ -107,6 +107,7 @@
             <div style="flex:1;display:flex;flex-direction:column;gap:8px">
               <h3>📝 <span id="quizName">퀴즈</span></h3>
               <div class="sub" id="quizInfo">구글 시트에서 문제를 먼저 불러오세요 · 누적 점수와 별개</div>
+              <label class="row" style="font-size:.85rem;gap:6px;cursor:pointer"><input type="checkbox" id="chkOneWin" checked style="width:auto"> 한 번 맞힌 분은 다음 문제부터 구경 (정답자 고르게 뽑기)</label>
               <div class="row"><button class="btn" id="btnQuizLoad">문제 불러오기</button><button class="btn primary" id="btnQuizGo" disabled>퀴즈 시작</button></div>
             </div>
           </div>
@@ -212,7 +213,7 @@
     <ul class="rules">
       <li>문제가 나오면 폰에서 답을 고르거나 입력해요</li>
       <li>가장 먼저 맞힌 한 사람만 정답자로 뽑혀요</li>
-      <li>틀리면 1.5초 쉬었다가 다시 도전</li>
+      <li id="qrRule3">틀리면 1.5초 쉬었다가 다시 도전</li>
     </ul>
     <div class="row"><button class="btn" id="btnQuizAbort">↩ 취소</button><button class="btn primary big" id="btnQuizFirst">첫 문제 공개 (Space)</button></div>
   </div>
@@ -221,7 +222,7 @@
 <section class="view hidden" id="vQuizOpen">
   <div class="row" style="justify-content:space-between;margin-bottom:12px">
     <span class="tag" id="qoNum" style="font-size:1.3rem">1 / 10</span>
-    <span style="font-size:1.4rem;font-weight:800"><span id="qoTime">0.0</span>초 · 시도 <span id="qoAttempts">0</span>건</span>
+    <span style="font-size:1.4rem;font-weight:800"><span id="qoTime">0.0</span>초 · 시도 <span id="qoAttempts">0</span>건<span id="qoElig"></span></span>
     <div class="row"><button class="btn" id="btnQuizReveal">정답 공개 (아무도 못 맞힘)</button><button class="btn" id="btnQuizEnd">퀴즈 끝내기</button></div>
   </div>
   <div class="card suit" style="text-align:center;padding:34px 24px"><div class="qtext" id="qoText"></div><div class="qguide" id="qoGuide"></div></div>
@@ -331,13 +332,13 @@
     $('qr').innerHTML = ''; const img = new Image(); img.alt = 'QR'; img.src = '/qr?u=' + encodeURIComponent(url); $('qr').appendChild(img);
     renderPlayers(); renderRoundInfo();
     mini = s.mini || null;
-    if (s.quiz) { quizTitle = s.quiz.title; quizTotal = s.quiz.total; quizSummary = s.quiz.summary; }
+    if (s.quiz) { quizTitle = s.quiz.title; quizTotal = s.quiz.total; quizSummary = s.quiz.summary; quizOneWin = s.quiz.oneWin; }
     switch (phase) {
       case 'mini_ready': showMiniReady(); break;
       case 'mini_play': startMiniPlayView(); break;
       case 'mini_result': renderMiniResult(mini.result); break;
       case 'quiz_ready': showQuizReady(); break;
-      case 'quiz_open': openedAt = s.openedAt; renderQuestion(s.question); $('qoAttempts').textContent = s.attempts; break;
+      case 'quiz_open': openedAt = s.openedAt; renderQuestion(s.question); $('qoAttempts').textContent = s.attempts; showElig(s.eligible); break;
       case 'quiz_reveal': renderQuestion(s.question); renderReveal(s.reveal); break;
       case 'quiz_summary': renderQuizSummary(); break;
       case 'final': renderTotal(true); break;
@@ -546,11 +547,16 @@
 
   /* ---------- 퀴즈 진행 ---------- */
   $('btnQuizGo').addEventListener('click', async () => {
-    const r = await call(sock, 'host:quizStart', { title: quizSet.title, questions: quizSet.questions });
+    const r = await call(sock, 'host:quizStart', { title: quizSet.title, questions: quizSet.questions, oneWin: $('chkOneWin').checked });
     if (!r.ok) return toast(r.error);
-    quizTitle = r.snap.quiz.title; quizTotal = r.snap.quiz.total; quizSummary = r.snap.quiz.summary; phase = 'quiz_ready'; showQuizReady();
+    quizTitle = r.snap.quiz.title; quizTotal = r.snap.quiz.total; quizSummary = r.snap.quiz.summary; quizOneWin = r.snap.quiz.oneWin; phase = 'quiz_ready'; showQuizReady();
   });
-  function showQuizReady() { $('qrTitle').textContent = `📝 ${quizTitle}`; $('qrSub').textContent = `모두 ${quizTotal}문제`; show('vQuizReady'); }
+  let quizOneWin = true;
+  function showQuizReady() {
+    $('qrTitle').textContent = `📝 ${quizTitle}`; $('qrSub').textContent = `모두 ${quizTotal}문제`;
+    $('qrRule3').textContent = quizOneWin ? '틀리면 1.5초 쉬었다가 다시 도전 · 한 번 맞힌 분은 다음 문제부터 구경' : '틀리면 1.5초 쉬었다가 다시 도전';
+    show('vQuizReady');
+  }
   async function quizNext() {
     const r = await call(sock, 'host:quizNext', null);
     if (!r.ok) return toast(r.error);
@@ -559,7 +565,8 @@
   $('btnQuizFirst').addEventListener('click', quizNext);
   $('btnQuizNext').addEventListener('click', quizNext);
   $('btnQuizAbort').addEventListener('click', toLobby);
-  sock.on('quiz:open', (d) => { offset = d.serverNow - Date.now(); openedAt = d.openedAt; phase = 'quiz_open'; $('qoAttempts').textContent = 0; renderQuestion(d.question); });
+  const showElig = (n) => { $('qoElig').textContent = quizOneWin && n != null ? ` · 도전 가능 ${n}명` : ''; };
+  sock.on('quiz:open', (d) => { offset = d.serverNow - Date.now(); openedAt = d.openedAt; phase = 'quiz_open'; $('qoAttempts').textContent = 0; showElig(d.eligible); renderQuestion(d.question); });
   sock.on('quiz:attempts', (n) => { $('qoAttempts').textContent = n; });
   function renderQuestion(q) {
     $('qoNum').textContent = `${q.n} / ${q.total}`;
