@@ -117,7 +117,7 @@ function playerSnapshot(room, p) {
   }
   if (room.phase.startsWith('quiz_')) {
     const z = room.quiz;
-    s.quiz = { title: z.title, total: z.questions.length };
+    s.quiz = { title: z.title, total: z.questions.length, oneWin: z.oneWin, won: hasWon(z, p) };
     if (room.phase === 'quiz_open') { s.question = quizQuestionPublic(room); s.lockLeft = Math.max(0, (p.quizLock || 0) - now()); }
     if (room.phase === 'quiz_reveal') s.reveal = quizRevealPublic(room);
     if (room.phase === 'quiz_summary') s.myWins = z.winners.filter((w) => w && w.id === p.id).length;
@@ -137,8 +137,8 @@ function hostSnapshot(room) {
   if (room.mini) s.mini = { ...miniInfo(room), startedAt: room.mini.startedAt, endsAt: room.mini.endsAt, result: room.mini.result || null };
   if (room.quiz) {
     const z = room.quiz;
-    s.quiz = { title: z.title, total: z.questions.length, idx: z.idx, summary: quizSummary(room) };
-    if (room.phase === 'quiz_open') { s.question = quizQuestionPublic(room); s.openedAt = z.openedAt; s.attempts = z.attempts; }
+    s.quiz = { title: z.title, total: z.questions.length, idx: z.idx, oneWin: z.oneWin, summary: quizSummary(room) };
+    if (room.phase === 'quiz_open') { s.question = quizQuestionPublic(room); s.openedAt = z.openedAt; s.attempts = z.attempts; s.eligible = eligibleCount(room); }
     if (room.phase === 'quiz_reveal') { s.question = quizQuestionPublic(room); s.reveal = quizRevealPublic(room); }
   }
   return s;
@@ -289,6 +289,10 @@ function sanitizeQuiz(list) {
   }
   return out;
 }
+// 이번 퀴즈에서 이미 1등 정답을 한 번 맞힌 사람인지 (맞힌 사람은 다음 문제부터 구경)
+const hasWon = (z, p) => z.winners.some((w) => w && w.id === p.id);
+const eligibleCount = (room) => [...room.players.values()].filter((p) => p.connected && !(room.quiz.oneWin && hasWon(room.quiz, p))).length;
+
 function openQuestion(room) {
   const z = room.quiz;
   z.openedAt = now(); z.attempts = 0;
@@ -296,7 +300,7 @@ function openQuestion(room) {
   room.phase = 'quiz_open';
   const q = quizQuestionPublic(room);
   io.to(P(room)).emit('quiz:open', { question: q });
-  io.to(H(room)).emit('quiz:open', { question: q, openedAt: z.openedAt, serverNow: now() });
+  io.to(H(room)).emit('quiz:open', { question: q, openedAt: z.openedAt, serverNow: now(), eligible: eligibleCount(room) });
 }
 function revealQuestion(room, winner) {
   const z = room.quiz;
@@ -415,9 +419,9 @@ io.on('connection', (socket) => {
     if (room.phase === 'mini_play') return ack(cb, { ok: false, error: '진행 중인 게임을 먼저 끝내 주세요.' });
     const questions = sanitizeQuiz(d.questions);
     if (!questions.length) return ack(cb, { ok: false, error: '문제가 없어요. 시트를 먼저 불러와 주세요.' });
-    room.quiz = { title: clean(d.title, 40) || DEFAULT_QUIZ_TITLE, questions, idx: -1, winners: [], openedAt: 0, attempts: 0 };
+    room.quiz = { title: clean(d.title, 40) || DEFAULT_QUIZ_TITLE, questions, idx: -1, winners: [], openedAt: 0, attempts: 0, oneWin: d.oneWin !== false };
     room.phase = 'quiz_ready';
-    io.to(P(room)).emit('quiz:ready', { title: room.quiz.title, total: questions.length });
+    io.to(P(room)).emit('quiz:ready', { title: room.quiz.title, total: questions.length, oneWin: room.quiz.oneWin });
     ack(cb, { ok: true, snap: hostSnapshot(room) });
   });
   hostOn('host:quizNext', (room, _d, cb) => {
@@ -487,6 +491,7 @@ io.on('connection', (socket) => {
     if (!me) return ack(cb, { ok: false });
     const { room, p } = me; const z = room.quiz; const t = now();
     if (room.phase !== 'quiz_open' || !z || (d && +d.n !== z.idx + 1)) return ack(cb, { ok: false, closed: true });
+    if (z.oneWin && hasWon(z, p)) return ack(cb, { ok: false, already: true });
     if (t < p.quizLock) return ack(cb, { ok: false, locked: p.quizLock - t });
     const q = z.questions[z.idx];
     const correct = q.type === 'choice'
